@@ -54,10 +54,19 @@ LISTE_EQUIPES_48 = [
 ]
 
 # --- CONNEXION GOOGLE SHEETS ---
+# --- CONNEXION GOOGLE SHEETS ---
+@st.cache_resource
 @st.cache_resource
 def get_sheets():
-    gc = gspread.service_account(filename="cle_google.json")
-    sh = gc.open_by_key(ID_DU_SHEETS)
+    # On charge les secrets configurés dans Streamlit Cloud
+    creds_dict = st.secrets["gcp_service_account"]
+    
+    # On utilise service_account_from_dict au lieu de service_account_from_file
+    gc = gspread.service_account_from_dict(creds_dict)
+    
+    # Remplace ID_DU_SHEETS par ton véritable identifiant de feuille (la longue chaîne dans l'URL)
+    sh = gc.open_by_key("TON_IDENTIFIANT_SHEET_ICI") 
+    
     return (
         sh,
         sh.worksheet("Calendrier"),
