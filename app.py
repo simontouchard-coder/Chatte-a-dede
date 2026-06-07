@@ -65,7 +65,7 @@ def get_sheets():
     gc = gspread.service_account_from_dict(creds_dict)
     
     # Remplace ID_DU_SHEETS par ton véritable identifiant de feuille (la longue chaîne dans l'URL)
-    sh = gc.open_by_key("TON_IDENTIFIANT_SHEET_ICI") 
+    sh = gc.open_by_key("1IgtyJJDNGbRlJqztpGqyntstGsQVe0ojwshwDdmNqqA") 
     
     return (
         sh,
