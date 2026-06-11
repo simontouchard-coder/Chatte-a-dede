@@ -6,6 +6,10 @@ import time
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+
+def maintenant_france():
+    return datetime.utcnow() + timedelta(hours=2) # +2 pour l'heure d'été française (UTC+2)
+    
 # --- CONFIGURATION ---
 st.set_page_config(page_title="La chatte à Dédé 🐱", page_icon="🏆", layout="wide")
 st.title("🏆 La chatte à Dédé 🐱")
@@ -266,7 +270,7 @@ with tab_accueil:
 
     with col_info:
         st.subheader("📅 Matchs du jour")
-        aujourd_hui = datetime.now().date()
+        aujourd_hui = now = maintenant_france()().date()
 
         if not df_cal.empty:
             matchs_jour = df_cal[df_cal["Date_Heure_dt"].dt.date == aujourd_hui].copy()
@@ -306,7 +310,7 @@ with tab_pronos:
         st.warning("Authentification requise (onglet Accueil).")
     else:
         joueur_actif = st.session_state["joueur_actif"]
-        now = datetime.now()
+        now = now = maintenant_france()()
 
         # --- PARI VAINQUEUR FINAL ---
         st.subheader("🏆 Pari Vainqueur Final")
@@ -434,7 +438,7 @@ with tab_pronos:
                         if not m_id:
                             continue
                         dt_match = pd.to_datetime(row["Date_Heure"], dayfirst=True, errors="coerce")
-                        if pd.notna(dt_match) and datetime.now() >= dt_match:
+                        if pd.notna(dt_match) and now = maintenant_france()() >= dt_match:
                             continue
                         s1 = st.session_state.get(f"i1_{m_id}")
                         s2 = st.session_state.get(f"i2_{m_id}")
