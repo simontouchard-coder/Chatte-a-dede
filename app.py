@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import gspread
-import time
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -55,11 +54,19 @@ LISTE_EQUIPES_48 = [
 ]
 
 # --- CONNEXION GOOGLE SHEETS ---
+# --- CONNEXION GOOGLE SHEETS ---
+@st.cache_resource
 @st.cache_resource
 def get_sheets():
+    # On charge les secrets configurés dans Streamlit Cloud
     creds_dict = st.secrets["gcp_service_account"]
+    
+    # On utilise service_account_from_dict au lieu de service_account_from_file
     gc = gspread.service_account_from_dict(creds_dict)
-    sh = gc.open_by_key("1IgtyJJDNGbRlJqztpGqyntstGsQVe0ojwshwDdmNqqA")
+    
+    # Remplace ID_DU_SHEETS par ton véritable identifiant de feuille (la longue chaîne dans l'URL)
+    sh = gc.open_by_key("1IgtyJJDNGbRlJqztpGqyntstGsQVe0ojwshwDdmNqqA") 
+    
     return (
         sh,
         sh.worksheet("Calendrier"),
@@ -96,7 +103,7 @@ df_pro = data["Pronostics"]
 df_msg = data["Messages"]
 
 if not df_cal.empty:
-    df_cal["Date_Heure_dt"] = pd.to_datetime(df_cal["Date_Heure"], dayfirst=True, errors="coerce")
+    df_cal["Date_Heure_dt"] = pd.to_datetime(df_cal["Date_Heure"], errors="coerce")
 
 # --- FONCTION DE CALCUL DES POINTS ---
 def calculer_points(row_match, p_s1, p_s2):
@@ -227,6 +234,38 @@ def get_classement():
     classement = classement.sort_values("Points", ascending=False).reset_index(drop=True)
     classement.index += 1
     return classement
+
+# --- ENREGISTREMENT DES PRONOS (fonction partagée) ---
+def enregistrer_pronos(joueur_actif, df_a_venir, now):
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    df_pro_local = charger_donnees()["Pronostics"]
+    nb = 0
+    for _, row in df_a_venir.iterrows():
+        m_id = str(row["ID_Match"]).strip()
+        if not m_id:
+            continue
+        dt_match = pd.to_datetime(row["Date_Heure"], errors="coerce")
+        if pd.notna(dt_match) and datetime.now() >= dt_match:
+            continue
+        s1 = st.session_state.get(f"i1_{m_id}")
+        s2 = st.session_state.get(f"i2_{m_id}")
+        if s1 is None or s2 is None:
+            continue
+        prono_exist = df_pro_local[
+            (df_pro_local["Joueur"] == joueur_actif)
+            & (df_pro_local["ID_Match"] == m_id)
+            & (df_pro_local["Prono_Score_1"].astype(str).str.strip() != "")
+            & (df_pro_local["Prono_Score_2"].astype(str).str.strip() != "")
+        ]
+        if prono_exist.empty:
+            sheet_pro.append_row([str(uuid4()), joueur_actif, m_id, str(s1), str(s2), now_str])
+        else:
+            row_idx = prono_exist.index[0] + 2
+            sheet_pro.update_cell(row_idx, 4, str(s1))
+            sheet_pro.update_cell(row_idx, 5, str(s2))
+            sheet_pro.update_cell(row_idx, 6, now_str)
+        nb += 1
+    return nb
 
 # --- NAVIGATION ---
 tab_accueil, tab_pronos, tab_classement, tab_forum, tab_regles, tab_admin = st.tabs(
@@ -379,7 +418,7 @@ with tab_pronos:
                             & (df_pro["Prono_Score_2"].astype(str).str.strip() != "")
                         ]
 
-                        dt_match = pd.to_datetime(row["Date_Heure"], dayfirst=True, errors="coerce")
+                        dt_match = pd.to_datetime(row["Date_Heure"], errors="coerce")
                         dans_24h = pd.notna(dt_match) and (dt_match - now) < timedelta(hours=24)
 
                         if not prono.empty:
@@ -419,6 +458,7 @@ with tab_pronos:
 
                     st.divider()
 
+                    # ── BOUTON DU BAS ──
                     submit_pronos = st.form_submit_button(
                         "💾 Enregistrer les pronos",
                         type="primary",
@@ -432,7 +472,7 @@ with tab_pronos:
                         m_id = str(row["ID_Match"]).strip()
                         if not m_id:
                             continue
-                        dt_match = pd.to_datetime(row["Date_Heure"], dayfirst=True, errors="coerce")
+                        dt_match = pd.to_datetime(row["Date_Heure"], errors="coerce")
                         if pd.notna(dt_match) and datetime.now() >= dt_match:
                             continue
                         s1 = st.session_state.get(f"i1_{m_id}")
@@ -446,25 +486,15 @@ with tab_pronos:
                             & (df_pro_local["Prono_Score_2"].astype(str).str.strip() != "")
                         ]
                         if prono_exist.empty:
-                            for attempt in range(3):
-                                try:
-                                    sheet_pro.append_row([
-                                        str(uuid4()), joueur_actif, m_id,
-                                        str(s1), str(s2), now_str,
-                                    ])
-                                    break
-                                except Exception:
-                                    if attempt < 2:
-                                        time.sleep(2 ** attempt)
+                            sheet_pro.append_row([
+                                str(uuid4()), joueur_actif, m_id,
+                                str(s1), str(s2), now_str,
+                            ])
                         else:
                             row_idx = prono_exist.index[0] + 2
-                            for attempt in range(3):
-                                try:
-                                    sheet_pro.update(f"D{row_idx}:F{row_idx}", [[str(s1), str(s2), now_str]])
-                                    break
-                                except Exception:
-                                    if attempt < 2:
-                                        time.sleep(2 ** attempt)
+                            sheet_pro.update_cell(row_idx, 4, str(s1))
+                            sheet_pro.update_cell(row_idx, 5, str(s2))
+                            sheet_pro.update_cell(row_idx, 6, now_str)
                     st.success("Pronostics enregistrés !")
                     st.cache_data.clear()
                     st.rerun()
