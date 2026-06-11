@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -6,6 +5,9 @@ import time
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+def maintenant_france():
+    return datetime.utcnow() + timedelta(hours=2)
+    
 # --- CONFIGURATION ---
 st.set_page_config(page_title="La chatte à Dédé 🐱", page_icon="🏆", layout="wide")
 st.title("🏆 La chatte à Dédé 🐱")
