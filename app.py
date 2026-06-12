@@ -4,6 +4,7 @@ import gspread
 import time
 from datetime import datetime, timedelta
 from uuid import uuid4
+import pytz
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="La chatte à Dédé 🐱", page_icon="🏆", layout="wide")
@@ -53,6 +54,13 @@ LISTE_EQUIPES_48 = [
     "Sénégal", "Suède", "Suisse", "Tunisie", "Turquie", "Uruguay",
     "Écosse", "Égypte", "Équateur"
 ]
+
+# --- TIMEZONE FRANCE ---
+TZ_FRANCE = pytz.timezone("Europe/Paris")
+
+def now_france():
+    """Heure actuelle en heure française."""
+    return datetime.now(TZ_FRANCE).replace(tzinfo=None)
 
 # --- CONNEXION GOOGLE SHEETS ---
 @st.cache_resource
@@ -201,8 +209,43 @@ def get_classement():
         axis=1,
     )
 
-    classement = df_merge.groupby("Joueur", as_index=False)["Points"].sum()
+    # --- Bon vainqueur (sans score exact) ---
+    def est_bon_vainqueur(r):
+        try:
+            r_s1 = int(str(r["Score_1_Reel"]).strip())
+            r_s2 = int(str(r["Score_2_Reel"]).strip())
+            p_s1 = int(str(r["Prono_Score_1"]).strip())
+            p_s2 = int(str(r["Prono_Score_2"]).strip())
+        except Exception:
+            return False
+        score_exact = (p_s1 == r_s1 and p_s2 == r_s2)
+        bon = (
+            (p_s1 > p_s2 and r_s1 > r_s2)
+            or (p_s1 < p_s2 and r_s1 < r_s2)
+            or (p_s1 == p_s2 and r_s1 == r_s2)
+        )
+        return bon and not score_exact
 
+    def est_score_exact(r):
+        try:
+            r_s1 = int(str(r["Score_1_Reel"]).strip())
+            r_s2 = int(str(r["Score_2_Reel"]).strip())
+            p_s1 = int(str(r["Prono_Score_1"]).strip())
+            p_s2 = int(str(r["Prono_Score_2"]).strip())
+        except Exception:
+            return False
+        return p_s1 == r_s1 and p_s2 == r_s2
+
+    df_merge["Bon_Vainqueur"] = df_merge.apply(est_bon_vainqueur, axis=1).astype(int)
+    df_merge["Score_Exact"] = df_merge.apply(est_score_exact, axis=1).astype(int)
+
+    classement = df_merge.groupby("Joueur", as_index=False).agg(
+        Points=("Points", "sum"),
+        Bons_pronos=("Bon_Vainqueur", "sum"),
+        Scores_exacts=("Score_Exact", "sum"),
+    )
+
+    # BONUS VAINQUEUR FINAL
     match_finale = df_cal[df_cal["Groupe"] == "Finale"]
     if not match_finale.empty:
         f = match_finale.iloc[0]
@@ -221,7 +264,7 @@ def get_classement():
                         if row["Joueur"] in classement["Joueur"].values:
                             classement.loc[classement["Joueur"] == row["Joueur"], "Points"] += 10
                         else:
-                            new_row = pd.DataFrame({"Joueur": [row["Joueur"]], "Points": [10]})
+                            new_row = pd.DataFrame({"Joueur": [row["Joueur"]], "Points": [10], "Bons_pronos": [0], "Scores_exacts": [0]})
                             classement = pd.concat([classement, new_row], ignore_index=True)
 
     classement = classement.sort_values("Points", ascending=False).reset_index(drop=True)
@@ -265,7 +308,8 @@ with tab_accueil:
 
     with col_info:
         st.subheader("📅 Matchs du jour")
-        aujourd_hui = datetime.now().date()
+        now = now_france()
+        aujourd_hui = now.date()
 
         if not df_cal.empty:
             matchs_jour = df_cal[df_cal["Date_Heure_dt"].dt.date == aujourd_hui].copy()
@@ -305,7 +349,7 @@ with tab_pronos:
         st.warning("Authentification requise (onglet Accueil).")
     else:
         joueur_actif = st.session_state["joueur_actif"]
-        now = datetime.now()
+        now = now_france()
 
         # --- PARI VAINQUEUR FINAL ---
         st.subheader("🏆 Pari Vainqueur Final")
@@ -426,14 +470,14 @@ with tab_pronos:
                     )
 
                 if submit_pronos:
-                    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                    now_str = now_france().strftime("%Y-%m-%d %H:%M:%S")
                     df_pro_local = charger_donnees()["Pronostics"]
                     for _, row in df_a_venir.iterrows():
                         m_id = str(row["ID_Match"]).strip()
                         if not m_id:
                             continue
                         dt_match = pd.to_datetime(row["Date_Heure"], dayfirst=True, errors="coerce")
-                        if pd.notna(dt_match) and datetime.now() >= dt_match:
+                        if pd.notna(dt_match) and now_france() >= dt_match:
                             continue
                         s1 = st.session_state.get(f"i1_{m_id}")
                         s2 = st.session_state.get(f"i2_{m_id}")
@@ -515,7 +559,11 @@ with tab_classement:
             medailles[i] if i < 3 else str(i + 1)
             for i in range(len(classement))
         ]
-        classement = classement[["🏅", "Joueur", "Points"]]
+        classement = classement[["🏅", "Joueur", "Points", "Bons_pronos", "Scores_exacts"]]
+        classement = classement.rename(columns={
+            "Bons_pronos": "✅ Bons pronos",
+            "Scores_exacts": "🎯 Scores exacts",
+        })
         st.dataframe(classement, use_container_width=True, hide_index=True)
 
 # ---------------------------------------------------------------
