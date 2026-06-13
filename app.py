@@ -285,9 +285,7 @@ with tab_accueil:
         now = now_france()
         aujourd_hui = now.date()
         demain = aujourd_hui + timedelta(days=1)
-
         if not df_cal.empty:
-            # --- MATCHS DU JOUR ---
             st.subheader("📅 Matchs du jour")
             matchs_jour = df_cal[df_cal["Date_Heure_dt"].dt.date == aujourd_hui].copy()
             if matchs_jour.empty:
@@ -300,12 +298,7 @@ with tab_accueil:
                     s1 = str(m["Score_1_Reel"]).strip()
                     s2 = str(m["Score_2_Reel"]).strip()
                     score_txt = f"**{s1} – {s2}** ✅" if s1 and s2 else f"*{heure}*"
-                    st.markdown(
-                        f"🕐 `{heure}` &nbsp;|&nbsp; {e1} **vs** {e2} "
-                        f"&nbsp;|&nbsp; {score_txt} &nbsp;|&nbsp; _{m['Groupe']}_"
-                    )
-
-            # --- MATCHS DU LENDEMAIN ---
+                    st.markdown(f"🕐 `{heure}` &nbsp;|&nbsp; {e1} **vs** {e2} &nbsp;|&nbsp; {score_txt} &nbsp;|&nbsp; _{m['Groupe']}_")
             st.subheader("📅 Matchs de demain")
             matchs_demain = df_cal[df_cal["Date_Heure_dt"].dt.date == demain].copy()
             if matchs_demain.empty:
@@ -315,13 +308,9 @@ with tab_accueil:
                     heure = m["Date_Heure_dt"].strftime("%H:%M")
                     e1 = equipe_avec_drapeau(m["Equipe_1"])
                     e2 = equipe_avec_drapeau(m["Equipe_2"])
-                    st.markdown(
-                        f"🕐 `{heure}` &nbsp;|&nbsp; {e1} **vs** {e2} "
-                        f"&nbsp;|&nbsp; _{m['Groupe']}_"
-                    )
+                    st.markdown(f"🕐 `{heure}` &nbsp;|&nbsp; {e1} **vs** {e2} &nbsp;|&nbsp; _{m['Groupe']}_")
         else:
             st.info("Calendrier vide.")
-
         st.divider()
         st.subheader("🏆 Top 5")
         classement = get_classement()
@@ -506,95 +495,122 @@ with tab_groupes:
     if df_cal.empty:
         st.info("Calendrier vide.")
     else:
-        # Matchs de poule : colonne Groupe contient "Poule"
-        df_poules = df_cal[df_cal["Groupe"].str.contains("Poule", na=False)].copy()
+        # On filtre les matchs de poule via la colonne Groupe
+        df_poules = df_cal[df_cal["Groupe"].str.contains("Poule", case=False, na=False)].copy()
 
         if df_poules.empty:
             st.info("Aucun match de poule trouvé.")
         else:
-            # Extraction de la lettre depuis la colonne Groupe : "Poule A" → "A"
-            # Format attendu : "Poule A" ou "Poule A1" etc.
-            df_poules["Lettre"] = df_poules["Groupe"].str.extract(r'Poule\s+([A-L])', expand=False)
+            # Extraction de la lettre du groupe depuis ID_Match
+            # Format attendu : "Poule A1", "Poule B2", etc.
+            # On extrait la première lettre majuscule après "Poule "
+            df_poules["Lettre"] = (
+                df_poules["ID_Match"]
+                .astype(str)
+                .str.upper()
+                .str.extract(r'POULE\s+([A-L])', expand=False)
+            )
 
             groupes_lettres = sorted(df_poules["Lettre"].dropna().unique())
 
-            cols_par_ligne = 3
-            for i in range(0, len(groupes_lettres), cols_par_ligne):
-                cols = st.columns(cols_par_ligne)
-                for j, lettre in enumerate(groupes_lettres[i:i+cols_par_ligne]):
-                    with cols[j]:
-                        st.markdown(f"### Groupe {lettre}")
-                        matchs_groupe = df_poules[df_poules["Lettre"] == lettre]
-                        equipes = pd.unique(matchs_groupe[["Equipe_1", "Equipe_2"]].values.ravel())
-                        stats = {eq: {"MJ": 0, "V": 0, "N": 0, "D": 0, "BP": 0, "BC": 0, "Pts": 0} for eq in equipes}
+            if not groupes_lettres:
+                st.warning("Impossible d'extraire les lettres de groupe depuis les ID_Match. Vérifie que le format est bien 'Poule A1', 'Poule B2', etc.")
+            else:
+                cols_par_ligne = 3
+                for i in range(0, len(groupes_lettres), cols_par_ligne):
+                    cols = st.columns(cols_par_ligne)
+                    for j, lettre in enumerate(groupes_lettres[i:i + cols_par_ligne]):
+                        with cols[j]:
+                            st.markdown(f"### Groupe {lettre}")
+                            matchs_groupe = df_poules[df_poules["Lettre"] == lettre].copy()
 
-                        for _, m in matchs_groupe.iterrows():
-                            s1 = str(m["Score_1_Reel"]).strip()
-                            s2 = str(m["Score_2_Reel"]).strip()
-                            if not s1.lstrip("-").isdigit() or not s2.lstrip("-").isdigit():
-                                continue
-                            s1, s2 = int(s1), int(s2)
-                            e1, e2 = m["Equipe_1"], m["Equipe_2"]
-                            stats[e1]["MJ"] += 1
-                            stats[e2]["MJ"] += 1
-                            stats[e1]["BP"] += s1
-                            stats[e1]["BC"] += s2
-                            stats[e2]["BP"] += s2
-                            stats[e2]["BC"] += s1
-                            if s1 > s2:
-                                stats[e1]["V"] += 1
-                                stats[e1]["Pts"] += 3
-                                stats[e2]["D"] += 1
-                            elif s1 < s2:
-                                stats[e2]["V"] += 1
-                                stats[e2]["Pts"] += 3
-                                stats[e1]["D"] += 1
-                            else:
-                                stats[e1]["N"] += 1
-                                stats[e2]["N"] += 1
-                                stats[e1]["Pts"] += 1
-                                stats[e2]["Pts"] += 1
+                            # Collecte toutes les équipes du groupe
+                            equipes = list(pd.unique(
+                                matchs_groupe[["Equipe_1", "Equipe_2"]].values.ravel()
+                            ))
 
-                        df_stats = pd.DataFrame([
-                            {
-                                "Équipe": equipe_avec_drapeau(eq),
-                                "MJ": s["MJ"], "V": s["V"], "N": s["N"], "D": s["D"],
-                                "BP": s["BP"], "BC": s["BC"],
-                                "Diff": s["BP"] - s["BC"],
-                                "Pts": s["Pts"],
-                            }
-                            for eq, s in stats.items()
-                        ])
-                        df_stats = df_stats.sort_values(
-                            ["Pts", "Diff", "BP"], ascending=[False, False, False]
-                        ).reset_index(drop=True)
-                        df_stats.index += 1
+                            # Initialise les stats pour chaque équipe
+                            stats = {eq: {
+                                "MJ": 0, "V": 0, "N": 0, "D": 0,
+                                "BP": 0, "BC": 0, "Pts": 0
+                            } for eq in equipes}
 
-                        def colorier_ligne(row):
-                            if row.name <= 2:
-                                return ["background-color: #1a472a; color: white"] * len(row)
-                            elif row.name == 3:
-                                return ["background-color: #7a4a00; color: white"] * len(row)
-                            else:
-                                return [""] * len(row)
+                            # Calcul des stats sur les matchs joués uniquement
+                            for _, m in matchs_groupe.iterrows():
+                                s1 = str(m["Score_1_Reel"]).strip()
+                                s2 = str(m["Score_2_Reel"]).strip()
+                                if not s1.lstrip("-").isdigit() or not s2.lstrip("-").isdigit():
+                                    continue
+                                s1, s2 = int(s1), int(s2)
+                                e1, e2 = m["Equipe_1"], m["Equipe_2"]
+                                stats[e1]["MJ"] += 1
+                                stats[e2]["MJ"] += 1
+                                stats[e1]["BP"] += s1
+                                stats[e1]["BC"] += s2
+                                stats[e2]["BP"] += s2
+                                stats[e2]["BC"] += s1
+                                if s1 > s2:
+                                    stats[e1]["V"] += 1
+                                    stats[e1]["Pts"] += 3
+                                    stats[e2]["D"] += 1
+                                elif s1 < s2:
+                                    stats[e2]["V"] += 1
+                                    stats[e2]["Pts"] += 3
+                                    stats[e1]["D"] += 1
+                                else:
+                                    stats[e1]["N"] += 1
+                                    stats[e2]["N"] += 1
+                                    stats[e1]["Pts"] += 1
+                                    stats[e2]["Pts"] += 1
 
-                        styled = df_stats[["Équipe", "MJ", "V", "N", "D", "BP", "BC", "Diff", "Pts"]].style.apply(
-                            colorier_ligne, axis=1
-                        )
-                        st.dataframe(styled, use_container_width=True, hide_index=False)
+                            # Création du DataFrame de classement
+                            df_stats = pd.DataFrame([
+                                {
+                                    "Équipe": equipe_avec_drapeau(eq),
+                                    "MJ": s["MJ"],
+                                    "V": s["V"],
+                                    "N": s["N"],
+                                    "D": s["D"],
+                                    "BP": s["BP"],
+                                    "BC": s["BC"],
+                                    "Diff": s["BP"] - s["BC"],
+                                    "Pts": s["Pts"],
+                                }
+                                for eq, s in stats.items()
+                            ])
 
-                        st.markdown("**Résultats :**")
-                        for _, m in matchs_groupe.sort_values("Date_Heure_dt").iterrows():
-                            s1 = str(m["Score_1_Reel"]).strip()
-                            s2 = str(m["Score_2_Reel"]).strip()
-                            e1 = equipe_avec_drapeau(m["Equipe_1"])
-                            e2 = equipe_avec_drapeau(m["Equipe_2"])
-                            if s1.lstrip("-").isdigit() and s2.lstrip("-").isdigit():
-                                st.markdown(f"- {e1} **{s1}–{s2}** {e2}")
-                            else:
-                                dt = pd.to_datetime(m["Date_Heure"], dayfirst=True, errors="coerce")
-                                heure = dt.strftime("%d/%m %H:%M") if pd.notna(dt) else m["Date_Heure"]
-                                st.markdown(f"- {e1} vs {e2} *({heure})*")
+                            df_stats = df_stats.sort_values(
+                                ["Pts", "Diff", "BP"],
+                                ascending=[False, False, False]
+                            ).reset_index(drop=True)
+                            df_stats.index += 1
+
+                            def colorier_ligne(row):
+                                if row.name <= 2:
+                                    return ["background-color: #1a472a; color: white"] * len(row)
+                                elif row.name == 3:
+                                    return ["background-color: #7a4a00; color: white"] * len(row)
+                                else:
+                                    return [""] * len(row)
+
+                            styled = df_stats[["Équipe", "MJ", "V", "N", "D", "BP", "BC", "Diff", "Pts"]].style.apply(
+                                colorier_ligne, axis=1
+                            )
+                            st.dataframe(styled, use_container_width=True, hide_index=False)
+
+                            # Résultats et matchs à venir du groupe
+                            st.markdown("**Matchs :**")
+                            for _, m in matchs_groupe.sort_values("Date_Heure_dt").iterrows():
+                                s1 = str(m["Score_1_Reel"]).strip()
+                                s2 = str(m["Score_2_Reel"]).strip()
+                                e1 = equipe_avec_drapeau(m["Equipe_1"])
+                                e2 = equipe_avec_drapeau(m["Equipe_2"])
+                                if s1.lstrip("-").isdigit() and s2.lstrip("-").isdigit():
+                                    st.markdown(f"- {e1} **{s1}–{s2}** {e2}")
+                                else:
+                                    dt = pd.to_datetime(m["Date_Heure"], dayfirst=True, errors="coerce")
+                                    heure = dt.strftime("%d/%m %H:%M") if pd.notna(dt) else m["Date_Heure"]
+                                    st.markdown(f"- {e1} vs {e2} *({heure})*")
 
 # ---------------------------------------------------------------
 # CLASSEMENT COMPLET
