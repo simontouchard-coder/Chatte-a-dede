@@ -59,7 +59,6 @@ LISTE_EQUIPES_48 = [
 TZ_FRANCE = pytz.timezone("Europe/Paris")
 
 def now_france():
-    """Heure actuelle en heure française."""
     return datetime.now(TZ_FRANCE).replace(tzinfo=None)
 
 # --- CONNEXION GOOGLE SHEETS ---
@@ -115,9 +114,7 @@ def calculer_points(row_match, p_s1, p_s2):
         p_s2 = int(str(p_s2).strip())
     except Exception:
         return 0
-
     groupe = str(row_match.get("Groupe", "")).strip()
-
     if "Poule" in groupe:
         if p_s1 == 5 and p_s2 == 0 and r_s1 == 5 and r_s2 == 0:
             return 7
@@ -130,7 +127,6 @@ def calculer_points(row_match, p_s1, p_s2):
         ):
             return 1
         return 0
-
     elif groupe in ["Seizième", "Huitième", "Quart", "Demi"]:
         bon_qualifie = (p_s1 > p_s2 and r_s1 > r_s2) or (p_s1 < p_s2 and r_s1 < r_s2)
         if not bon_qualifie:
@@ -138,7 +134,6 @@ def calculer_points(row_match, p_s1, p_s2):
         if p_s1 == r_s1 and p_s2 == r_s2:
             return 5
         return 2
-
     elif groupe == "Petite Finale":
         bon_gagnant = (p_s1 > p_s2 and r_s1 > r_s2) or (p_s1 < p_s2 and r_s1 < r_s2)
         if not bon_gagnant:
@@ -146,7 +141,6 @@ def calculer_points(row_match, p_s1, p_s2):
         if p_s1 == r_s1 and p_s2 == r_s2:
             return 8
         return 3
-
     elif groupe == "Finale":
         bon_vainqueur = (p_s1 > p_s2 and r_s1 > r_s2) or (p_s1 < p_s2 and r_s1 < r_s2)
         if not bon_vainqueur:
@@ -154,7 +148,6 @@ def calculer_points(row_match, p_s1, p_s2):
         if p_s1 == r_s1 and p_s2 == r_s2:
             return 10
         return 4
-
     return 0
 
 # --- RÉSULTAT VISUEL D'UN PRONO ---
@@ -179,37 +172,25 @@ def statut_prono(row_match, p_s1, p_s2):
 def get_classement():
     if df_cal.empty or df_pro.empty:
         return pd.DataFrame()
-
     df_pro_saisis = df_pro[
         (df_pro["Prono_Score_1"].astype(str).str.strip() != "")
         & (df_pro["Prono_Score_2"].astype(str).str.strip() != "")
     ].copy()
-
     if df_pro_saisis.empty:
         return pd.DataFrame()
-
     df_cal_scores = df_cal[
         (df_cal["Score_1_Reel"].astype(str).str.strip() != "")
         & (df_cal["Score_2_Reel"].astype(str).str.strip() != "")
     ].copy()
-
     if df_cal_scores.empty:
         return pd.DataFrame()
-
     df_merge = pd.merge(
-        df_pro_saisis,
-        df_cal_scores,
-        on="ID_Match",
-        how="inner",
-        suffixes=("_pro", "_cal"),
+        df_pro_saisis, df_cal_scores, on="ID_Match", how="inner", suffixes=("_pro", "_cal"),
     )
-
     df_merge["Points"] = df_merge.apply(
-        lambda r: calculer_points(r, r["Prono_Score_1"], r["Prono_Score_2"]),
-        axis=1,
+        lambda r: calculer_points(r, r["Prono_Score_1"], r["Prono_Score_2"]), axis=1,
     )
 
-    # --- Bon vainqueur (sans score exact) ---
     def est_bon_vainqueur(r):
         try:
             r_s1 = int(str(r["Score_1_Reel"]).strip())
@@ -238,14 +219,11 @@ def get_classement():
 
     df_merge["Bon_Vainqueur"] = df_merge.apply(est_bon_vainqueur, axis=1).astype(int)
     df_merge["Score_Exact"] = df_merge.apply(est_score_exact, axis=1).astype(int)
-
     classement = df_merge.groupby("Joueur", as_index=False).agg(
         Points=("Points", "sum"),
         Bons_pronos=("Bon_Vainqueur", "sum"),
         Scores_exacts=("Score_Exact", "sum"),
     )
-
-    # BONUS VAINQUEUR FINAL
     match_finale = df_cal[df_cal["Groupe"] == "Finale"]
     if not match_finale.empty:
         f = match_finale.iloc[0]
@@ -256,8 +234,7 @@ def get_classement():
             if s1 != s2:
                 vainqueur_final = f["Equipe_1"] if s1 > s2 else f["Equipe_2"]
                 df_vainqueurs = pd.DataFrame(
-                    sheet_vainq.get_all_values()[1:],
-                    columns=["Joueur", "Equipe_Pariée"]
+                    sheet_vainq.get_all_values()[1:], columns=["Joueur", "Equipe_Pariée"]
                 )
                 for _, row in df_vainqueurs.iterrows():
                     if row["Equipe_Pariée"] == vainqueur_final:
@@ -266,14 +243,13 @@ def get_classement():
                         else:
                             new_row = pd.DataFrame({"Joueur": [row["Joueur"]], "Points": [10], "Bons_pronos": [0], "Scores_exacts": [0]})
                             classement = pd.concat([classement, new_row], ignore_index=True)
-
     classement = classement.sort_values("Points", ascending=False).reset_index(drop=True)
     classement.index += 1
     return classement
 
 # --- NAVIGATION ---
-tab_accueil, tab_pronos, tab_classement, tab_forum, tab_regles, tab_admin = st.tabs(
-    ["🏠 Accueil", "⚽ Pronos", "📊 Classement", "💬 Forum", "📖 Règles", "⚙️ Admin"]
+tab_accueil, tab_pronos, tab_groupes, tab_classement, tab_forum, tab_regles, tab_admin = st.tabs(
+    ["🏠 Accueil", "⚽ Pronos", "🌍 Groupes", "📊 Classement", "💬 Forum", "📖 Règles", "⚙️ Admin"]
 )
 
 # ---------------------------------------------------------------
@@ -281,7 +257,6 @@ tab_accueil, tab_pronos, tab_classement, tab_forum, tab_regles, tab_admin = st.t
 # ---------------------------------------------------------------
 with tab_accueil:
     col_auth, col_info = st.columns([1, 2])
-
     with col_auth:
         st.subheader("Authentification")
         if not st.session_state.get("auth_ok"):
@@ -307,11 +282,13 @@ with tab_accueil:
                 st.rerun()
 
     with col_info:
-        st.subheader("📅 Matchs du jour")
         now = now_france()
         aujourd_hui = now.date()
+        demain = aujourd_hui + timedelta(days=1)
 
         if not df_cal.empty:
+            # --- MATCHS DU JOUR ---
+            st.subheader("📅 Matchs du jour")
             matchs_jour = df_cal[df_cal["Date_Heure_dt"].dt.date == aujourd_hui].copy()
             if matchs_jour.empty:
                 st.info("Aucun match aujourd'hui.")
@@ -327,11 +304,25 @@ with tab_accueil:
                         f"🕐 `{heure}` &nbsp;|&nbsp; {e1} **vs** {e2} "
                         f"&nbsp;|&nbsp; {score_txt} &nbsp;|&nbsp; _{m['Groupe']}_"
                     )
+
+            # --- MATCHS DU LENDEMAIN ---
+            st.subheader("📅 Matchs de demain")
+            matchs_demain = df_cal[df_cal["Date_Heure_dt"].dt.date == demain].copy()
+            if matchs_demain.empty:
+                st.info("Aucun match demain.")
+            else:
+                for _, m in matchs_demain.iterrows():
+                    heure = m["Date_Heure_dt"].strftime("%H:%M")
+                    e1 = equipe_avec_drapeau(m["Equipe_1"])
+                    e2 = equipe_avec_drapeau(m["Equipe_2"])
+                    st.markdown(
+                        f"🕐 `{heure}` &nbsp;|&nbsp; {e1} **vs** {e2} "
+                        f"&nbsp;|&nbsp; _{m['Groupe']}_"
+                    )
         else:
             st.info("Calendrier vide.")
 
         st.divider()
-
         st.subheader("🏆 Top 5")
         classement = get_classement()
         if classement.empty:
@@ -351,17 +342,13 @@ with tab_pronos:
         joueur_actif = st.session_state["joueur_actif"]
         now = now_france()
 
-        # --- PARI VAINQUEUR FINAL ---
         st.subheader("🏆 Pari Vainqueur Final")
         date_limite_vainqueur = datetime(2026, 6, 11, 23, 59, 59)
         est_verrouille_vainqueur = now > date_limite_vainqueur
-
         df_vainq = pd.DataFrame(
-            sheet_vainq.get_all_values()[1:],
-            columns=["Joueur", "Equipe_Pariée"]
+            sheet_vainq.get_all_values()[1:], columns=["Joueur", "Equipe_Pariée"]
         )
         pari = df_vainq[df_vainq["Joueur"] == joueur_actif]
-
         if est_verrouille_vainqueur:
             if not pari.empty:
                 st.info(f"🔒 Ton vainqueur final est verrouillé : **{equipe_avec_drapeau(pari.iloc[0]['Equipe_Pariée'])}**")
@@ -386,15 +373,11 @@ with tab_pronos:
                     st.rerun()
 
         st.divider()
-
-        # --- PRONOSTICS MATCHS ---
         st.subheader("Saisie des pronostics")
-
         if df_cal.empty:
             st.info("Aucun match dans le calendrier.")
         else:
             masquer_passes = st.toggle("Masquer les matchs passés", value=False)
-
             df_a_venir = df_cal[
                 df_cal["Date_Heure_dt"].isna() | (df_cal["Date_Heure_dt"] > now)
             ].copy()
@@ -402,30 +385,24 @@ with tab_pronos:
                 df_cal["Date_Heure_dt"].notna() & (df_cal["Date_Heure_dt"] <= now)
             ].copy()
 
-            # --- MATCHS À VENIR ---
             st.markdown("#### ⏳ Matchs à venir")
             if df_a_venir.empty:
                 st.info("Tous les matchs sont passés.")
             else:
                 with st.form("form_pronos"):
-
                     st.divider()
-
                     for _, row in df_a_venir.iterrows():
                         m_id = str(row["ID_Match"]).strip()
                         if not m_id:
                             continue
-
                         prono = df_pro[
                             (df_pro["Joueur"] == joueur_actif)
                             & (df_pro["ID_Match"] == m_id)
                             & (df_pro["Prono_Score_1"].astype(str).str.strip() != "")
                             & (df_pro["Prono_Score_2"].astype(str).str.strip() != "")
                         ]
-
                         dt_match = pd.to_datetime(row["Date_Heure"], dayfirst=True, errors="coerce")
                         dans_24h = pd.notna(dt_match) and (dt_match - now) < timedelta(hours=24)
-
                         if not prono.empty:
                             try:
                                 v1 = int(str(prono.iloc[0]["Prono_Score_1"]).strip())
@@ -439,35 +416,15 @@ with tab_pronos:
                         else:
                             v1, v2 = None, None
                             statut_saisie = "⚠️" if dans_24h else "🔲"
-
                         e1 = equipe_avec_drapeau(row["Equipe_1"])
                         e2 = equipe_avec_drapeau(row["Equipe_2"])
-
                         c0, c1, c2, c3 = st.columns([0.3, 3.5, 1, 1])
                         c0.write(statut_saisie)
                         c1.write(f"**{row['Groupe']}** — {row['Date_Heure']} — {e1} vs {e2}")
-                        c2.number_input(
-                            f"score1_{m_id}", 0, 10,
-                            value=v1,
-                            placeholder="?",
-                            label_visibility="collapsed",
-                            key=f"i1_{m_id}",
-                        )
-                        c3.number_input(
-                            f"score2_{m_id}", 0, 10,
-                            value=v2,
-                            placeholder="?",
-                            label_visibility="collapsed",
-                            key=f"i2_{m_id}",
-                        )
-
+                        c2.number_input(f"score1_{m_id}", 0, 10, value=v1, placeholder="?", label_visibility="collapsed", key=f"i1_{m_id}")
+                        c3.number_input(f"score2_{m_id}", 0, 10, value=v2, placeholder="?", label_visibility="collapsed", key=f"i2_{m_id}")
                     st.divider()
-
-                    submit_pronos = st.form_submit_button(
-                        "💾 Enregistrer les pronos",
-                        type="primary",
-                        use_container_width=True,
-                    )
+                    submit_pronos = st.form_submit_button("💾 Enregistrer les pronos", type="primary", use_container_width=True)
 
                 if submit_pronos:
                     now_str = now_france().strftime("%Y-%m-%d %H:%M:%S")
@@ -492,10 +449,7 @@ with tab_pronos:
                         if prono_exist.empty:
                             for attempt in range(3):
                                 try:
-                                    sheet_pro.append_row([
-                                        str(uuid4()), joueur_actif, m_id,
-                                        str(s1), str(s2), now_str,
-                                    ])
+                                    sheet_pro.append_row([str(uuid4()), joueur_actif, m_id, str(s1), str(s2), now_str])
                                     break
                                 except Exception:
                                     if attempt < 2:
@@ -513,7 +467,6 @@ with tab_pronos:
                     st.cache_data.clear()
                     st.rerun()
 
-            # --- MATCHS PASSÉS ---
             if not masquer_passes and not df_passes.empty:
                 st.markdown("#### 🔒 Matchs passés — Résultats de tes pronos")
                 for _, row in df_passes.sort_values("Date_Heure_dt", ascending=False).iterrows():
@@ -546,6 +499,104 @@ with tab_pronos:
                     )
 
 # ---------------------------------------------------------------
+# GROUPES
+# ---------------------------------------------------------------
+with tab_groupes:
+    st.subheader("🌍 Groupes de la Coupe du Monde 2026")
+    if df_cal.empty:
+        st.info("Calendrier vide.")
+    else:
+        # Matchs de poule : colonne Groupe contient "Poule"
+        df_poules = df_cal[df_cal["Groupe"].str.contains("Poule", na=False)].copy()
+
+        if df_poules.empty:
+            st.info("Aucun match de poule trouvé.")
+        else:
+            # Extraction de la lettre depuis la colonne Groupe : "Poule A" → "A"
+            # Format attendu : "Poule A" ou "Poule A1" etc.
+            df_poules["Lettre"] = df_poules["Groupe"].str.extract(r'Poule\s+([A-L])', expand=False)
+
+            groupes_lettres = sorted(df_poules["Lettre"].dropna().unique())
+
+            cols_par_ligne = 3
+            for i in range(0, len(groupes_lettres), cols_par_ligne):
+                cols = st.columns(cols_par_ligne)
+                for j, lettre in enumerate(groupes_lettres[i:i+cols_par_ligne]):
+                    with cols[j]:
+                        st.markdown(f"### Groupe {lettre}")
+                        matchs_groupe = df_poules[df_poules["Lettre"] == lettre]
+                        equipes = pd.unique(matchs_groupe[["Equipe_1", "Equipe_2"]].values.ravel())
+                        stats = {eq: {"MJ": 0, "V": 0, "N": 0, "D": 0, "BP": 0, "BC": 0, "Pts": 0} for eq in equipes}
+
+                        for _, m in matchs_groupe.iterrows():
+                            s1 = str(m["Score_1_Reel"]).strip()
+                            s2 = str(m["Score_2_Reel"]).strip()
+                            if not s1.lstrip("-").isdigit() or not s2.lstrip("-").isdigit():
+                                continue
+                            s1, s2 = int(s1), int(s2)
+                            e1, e2 = m["Equipe_1"], m["Equipe_2"]
+                            stats[e1]["MJ"] += 1
+                            stats[e2]["MJ"] += 1
+                            stats[e1]["BP"] += s1
+                            stats[e1]["BC"] += s2
+                            stats[e2]["BP"] += s2
+                            stats[e2]["BC"] += s1
+                            if s1 > s2:
+                                stats[e1]["V"] += 1
+                                stats[e1]["Pts"] += 3
+                                stats[e2]["D"] += 1
+                            elif s1 < s2:
+                                stats[e2]["V"] += 1
+                                stats[e2]["Pts"] += 3
+                                stats[e1]["D"] += 1
+                            else:
+                                stats[e1]["N"] += 1
+                                stats[e2]["N"] += 1
+                                stats[e1]["Pts"] += 1
+                                stats[e2]["Pts"] += 1
+
+                        df_stats = pd.DataFrame([
+                            {
+                                "Équipe": equipe_avec_drapeau(eq),
+                                "MJ": s["MJ"], "V": s["V"], "N": s["N"], "D": s["D"],
+                                "BP": s["BP"], "BC": s["BC"],
+                                "Diff": s["BP"] - s["BC"],
+                                "Pts": s["Pts"],
+                            }
+                            for eq, s in stats.items()
+                        ])
+                        df_stats = df_stats.sort_values(
+                            ["Pts", "Diff", "BP"], ascending=[False, False, False]
+                        ).reset_index(drop=True)
+                        df_stats.index += 1
+
+                        def colorier_ligne(row):
+                            if row.name <= 2:
+                                return ["background-color: #1a472a; color: white"] * len(row)
+                            elif row.name == 3:
+                                return ["background-color: #7a4a00; color: white"] * len(row)
+                            else:
+                                return [""] * len(row)
+
+                        styled = df_stats[["Équipe", "MJ", "V", "N", "D", "BP", "BC", "Diff", "Pts"]].style.apply(
+                            colorier_ligne, axis=1
+                        )
+                        st.dataframe(styled, use_container_width=True, hide_index=False)
+
+                        st.markdown("**Résultats :**")
+                        for _, m in matchs_groupe.sort_values("Date_Heure_dt").iterrows():
+                            s1 = str(m["Score_1_Reel"]).strip()
+                            s2 = str(m["Score_2_Reel"]).strip()
+                            e1 = equipe_avec_drapeau(m["Equipe_1"])
+                            e2 = equipe_avec_drapeau(m["Equipe_2"])
+                            if s1.lstrip("-").isdigit() and s2.lstrip("-").isdigit():
+                                st.markdown(f"- {e1} **{s1}–{s2}** {e2}")
+                            else:
+                                dt = pd.to_datetime(m["Date_Heure"], dayfirst=True, errors="coerce")
+                                heure = dt.strftime("%d/%m %H:%M") if pd.notna(dt) else m["Date_Heure"]
+                                st.markdown(f"- {e1} vs {e2} *({heure})*")
+
+# ---------------------------------------------------------------
 # CLASSEMENT COMPLET
 # ---------------------------------------------------------------
 with tab_classement:
@@ -576,7 +627,6 @@ with tab_forum:
     else:
         for _, msg in df_msg.iterrows():
             st.markdown(f"**{msg['Pseudo']}** : {msg['Message']}")
-
     with st.form("form_forum", clear_on_submit=True):
         pseudo = st.session_state.get("joueur_actif", "Anonyme")
         message = st.text_input("Message :")
